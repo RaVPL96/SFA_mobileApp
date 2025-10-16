@@ -1,12 +1,13 @@
 import React from 'react';
 import { useFonts } from "expo-font";
 import { ActivityIndicator, View } from "react-native";
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-
-
+//import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AuthNavigator from '../navigation/AuthNavigator';
+import { Provider as PaperProvider } from 'react-native-paper';
 
-
+import { Provider } from "react-redux";
+import  store  from "../store"; // adjust path if needed
+// or your main navigation component
 
 export default function App() {
   const [fontsLoaded] = useFonts({
@@ -25,11 +26,16 @@ export default function App() {
   }
 
   return (
-    <SafeAreaProvider>
+        <PaperProvider>
+
+    <Provider store={store}>
      
    <AuthNavigator/>
    
      
-    </SafeAreaProvider>
+    </Provider>
+
+        </PaperProvider>
+  
   );
 }

@@ -1,8 +1,4 @@
-// Example of Splash, Login and Sign Up in React Native
-// https://aboutreact.com/react-native-login-and-signup/
-
-// Import React and Component
-import React, {useState, createRef} from 'react';
+import React, { useState, useEffect } from "react";
 import {
   StyleSheet,
   TextInput,
@@ -10,186 +6,265 @@ import {
   Text,
   ScrollView,
   Image,
-  Keyboard,
+  Pressable,
   TouchableOpacity,
   KeyboardAvoidingView,
-} from 'react-native';
-
-//import AsyncStorage from '@react-native-async-storage/async-storage';
-
-//import Loader from './Components/Loader';
-import UDColors from '../constants/UDColors';
-import UDImages from '../UDImages';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+  ActivityIndicator,
+} from "react-native";
+import titles from "../Titles";
+import { useAppDispatch, useAppSelector } from "../store/Hooks";
+import UDColors from "../constants/UDColors";
+import UDImages from "../UDImages";
+import Checkbox from "expo-checkbox";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { LinearGradient } from "expo-linear-gradient";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { loginUser } from "../actions/UserAction";
+import {
+  setUserName as setAsyncUserName,
+  setPassword as setAsyncPassword,
+  setRememberMe as setAsyncRememberMe,
+  getRememberMe as getAsyncRememberMe,
+  getUserName as getAsyncUserName,
+  getPassword as getAsyncPassword,
+  setToken as setAsyncToken,
+} from "../services/AsyncStoreService";
 
 type LoginScreenProps = {
   navigation: NativeStackNavigationProp<any>;
 };
 
-const LoginScreen = ({navigation}: LoginScreenProps) => {
-  const [userEmail, setUserEmail] = useState('');
-  const [userPassword, setUserPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [errortext, setErrortext] = useState('');
+const LoginScreen = ({ navigation }: LoginScreenProps) => {
+  const [userName, setUserName] = useState(""); // 👈 Hardcoded
+  const [password, setPassword] = useState(""); // 👈 Hardcoded
+  const [rememberMe, setRememberMe] = useState(false);
+  const [error, setError] = useState({ field: "", message: "" });
+  const { user: userLoginResponse, loading: isLoggingIn } = useAppSelector((state) => state.login);
+  const dispatch = useAppDispatch();
+  const [loginButtonPressed, setLoginButtonPressed] = useState(false);
+  const [passwordVisibility, setPasswordVisibility] = useState(true);
+  const [rightIcon, setRightIcon] = useState("eye");
+  const [verifiedByUserNameAndPassword, setVerifiedByUserNameAndPassword] = useState(false);
 
-  const passwordInputRef = createRef<TextInput>();
+  useEffect(() => {
+    fillCredentials();
+  }, []);
 
-  const handleSubmitPress = () => {
-    setErrortext('');
-    if (!userEmail) {
-      alert('Please fill Email');
-      return;
+  const handlePasswordVisibility = () => {
+    setRightIcon((prev) => (prev === "eye" ? "eye-off" : "eye"));
+    setPasswordVisibility((prev) => !prev);
+  };
+
+  const fillCredentials = async () => {
+    const rm = await getAsyncRememberMe();
+    const un = await getAsyncUserName();
+    const ps = await getAsyncPassword();
+    if (rm === "Y") {
+    setUserName(un ?? ""); // ✅ fallback to empty string if null
+    setPassword(ps ?? "");
+  };
+  };
+
+  const verifyUserNameAndPassword = React.useCallback(async () => {
+    setVerifiedByUserNameAndPassword(true);
+    const un = await getAsyncUserName();
+    const ps = await getAsyncPassword();
+    dispatch(loginUser({ userName: un, password: ps }));
+  }, [dispatch]);
+
+  useEffect(() => {
+   if (userLoginResponse?.data) {
+  if (loginButtonPressed) {
+    setAsyncUserName(userName);
+    setAsyncPassword(password);
+    setAsyncRememberMe(rememberMe ? "Y" : "N");
+    console.log("errr user ", userLoginResponse.error);
+  }
+
+  if (userLoginResponse.data.token) {
+    setAsyncToken(userLoginResponse.data.token);
+
+    // The API sometimes returns gpsStatus as a string ("false") instead of a boolean.
+    const isDayStarted = userLoginResponse.data.gpsStatus === true;
+      const isDayEnd = userLoginResponse.data.gpsStatus === false;
+
+    // Check server time. The format is assumed to be "HH.mm".
+  const serverTime = userLoginResponse.data.serverTime; // e.g., "17.30"
+  //   const serverTime = "19:35:00"; // e.g., "17.30"
+    let isAfterCutoff = false;
+    if (typeof serverTime === "string") {
+      const [hours, minutes] = serverTime.split(":").map(Number);
+      if (!isNaN(hours) && !isNaN(minutes)) {
+        // Check if time is between 17:30 (5:30 PM) and 23:59 (11:59 PM)
+        const isAfterStartTime = hours > 17 || (hours === 17 && minutes >= 30);
+        const isBeforeEndTime = hours < 24;
+        isAfterCutoff = isAfterStartTime && isBeforeEndTime;
+      }
     }
-    if (!userPassword) {
-      alert('Please fill Password');
-      return;
-    }
-    setLoading(true);
-    let dataToSend = {email: userEmail, password: userPassword};
-    let formBody: string[] = [];
-    (Object.keys(dataToSend) as Array<keyof typeof dataToSend>).forEach((key) => {
-      let encodedKey = encodeURIComponent(key);
-      let encodedValue = encodeURIComponent(dataToSend[key]);
-      formBody.push(encodedKey + '=' + encodedValue);
-    });
-    const formBodyString = formBody.join('&');
 
-    fetch('http://localhost:3000/api/user/login', {
-      method: 'POST',
-      body: formBodyString,
-      headers: {
-        //Header Defination
-        'Content-Type':
-        'application/x-www-form-urlencoded;charset=UTF-8',
-      },
-    })
-      .then((response) => response.json())
-      .then((responseJson) => {
-        //Hide Loader
-        setLoading(false);
-        console.log(responseJson);
-        // If server response message same as Data Matched
-        if (responseJson.status === 'success') {
-          AsyncStorage.setItem('user_id', responseJson.data.email);
-          console.log(responseJson.data.email);
-          navigation.replace('DrawerNavigationRoutes');
-        } else {
-          setErrortext(responseJson.msg);
-          console.log('Please check your email id or password');
+    // console.log("cleck loci", isAfterCutoff, "day started", isDayStarted);
+    // console.log("server time", isAfterCutoff, "day started", isDayStarted);
+
+    // Navigation logic
+    if (isDayStarted) { // If day has already started, go to Home
+      navigation.navigate("Home");
+    } else {
+      // If day has not started, check the time
+      isAfterCutoff ? navigation.navigate("Home") : navigation.navigate("start");
+    }
+  }
+}
+
+
+    if (userLoginResponse?.error) {
+      if (loginButtonPressed) {
+        let errorMessage = titles.loginError; // Default fallback message
+        const apiError = userLoginResponse.error as { message?: string };
+
+        if (apiError && typeof apiError.message === 'string') {
+          // The API message might be "Validation Error: {error=Invalid username: Test}"
+          // We try to extract the specific part inside {error=...}
+          const specificErrorMatch = apiError.message.match(/error=([^}]+)/);
+          errorMessage = specificErrorMatch ? specificErrorMatch[1] : apiError.message;
         }
-      })
-      .catch((error) => {
-        //Hide Loader
-        setLoading(false);
-        console.error(error);
-      });
+        setError({ field: "fieldValidation", message: errorMessage });
+      } else if (!verifiedByUserNameAndPassword) {
+        verifyUserNameAndPassword();
+      }
+    }
+
+    setLoginButtonPressed(false);
+  }, [
+    userLoginResponse,
+    loginButtonPressed,
+    userName,
+    password,
+    rememberMe,
+    navigation,
+    verifiedByUserNameAndPassword,
+    verifyUserNameAndPassword,
+  ]);
+
+  const onLoginPress = () => {
+    let loginError = { field: "", message: "" };
+    if (!userName && !password) {
+      loginError = {
+        field: "fieldValidation",
+        message: titles.userNameAndPasswordRequired,
+      };
+    } else if (!userName) {
+      loginError = {
+        field: "fieldValidation",
+        message: titles.requiredUserName,
+      };
+    } else if (!password) {
+      loginError = {
+        field: "fieldValidation",
+        message: titles.requiredPassword,
+      };
+    } else {
+      setLoginButtonPressed(true);
+      setError({ field: "", message: "" });
+      dispatch(loginUser({ userName, password }));
+      return;
+    }
+
+    setError(loginError);
   };
 
   return (
     <View style={styles.mainBody}>
-      {/* <Loader loading={loading} /> */}
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{
-          flex: 1,
-          justifyContent: 'center',
-          alignContent: 'center',
-        }}>
-        <View>
+      <LinearGradient colors={["#ff6666", "#ff0000"]} style={styles.gradient}>
+        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flex: 1, justifyContent: "center", alignContent: "center" }}>
           <KeyboardAvoidingView enabled>
-            <View style={{alignItems: 'center'}}>
+            <View style={{ alignItems: "center" }}>
               <Image
-                    source={UDImages.splashLogo}
-                style={{
-                  width: '50%',
-                  height: 100,
-                  resizeMode: 'contain',
-                  margin: 30,
-                }}
+                source={UDImages.splashLogo}
+                style={{ width: "50%", height: 100, resizeMode: "contain", margin: 30 }}
               />
             </View>
+
+            <View style={styles.SectionStyle}>
+              <TextInput
+                value={userName}
+                style={styles.inputStyle}
+                onChangeText={setUserName}
+                placeholderTextColor="#0C056D"
+                placeholder={titles.userName}
+                maxLength={30}
+              />
+            </View>
+
             <View style={styles.SectionStyle}>
               <TextInput
                 style={styles.inputStyle}
-                onChangeText={(UserEmail) =>
-                  setUserEmail(UserEmail)
-                }
-                placeholder="Enter Email" //dummy@abc.com
-                placeholderTextColor="#8b9cb5"
-                autoCapitalize="none"
-                keyboardType="email-address"
-                returnKeyType="next"
-                onSubmitEditing={() =>
-                  passwordInputRef.current &&
-                  passwordInputRef.current.focus()
-                }
-                underlineColorAndroid="#f000"
-                blurOnSubmit={false}
+                value={password}
+                onChangeText={setPassword}
+                placeholderTextColor="#0C056D"
+                secureTextEntry={passwordVisibility}
+                placeholder={titles.password}
+                maxLength={30}
               />
+              <Pressable style={styles.eyeIcon} onPress={handlePasswordVisibility}>
+                <MaterialCommunityIcons   name={rightIcon as any} size={22} color="#0C056D" />
+              </Pressable>
             </View>
-            <View style={styles.SectionStyle}>
-              <TextInput
-                style={styles.inputStyle}
-                onChangeText={(UserPassword) =>
-                  setUserPassword(UserPassword)
-                }
-                placeholder="Enter Password" //12345
-                placeholderTextColor="#8b9cb5"
-                keyboardType="default"
-                ref={passwordInputRef}
-                onSubmitEditing={Keyboard.dismiss}
-                blurOnSubmit={false}
-                secureTextEntry={true}
-                underlineColorAndroid="#f000"
-                returnKeyType="next"
-              />
-            </View>
-            {errortext != '' ? (
-              <Text style={styles.errorTextStyle}>
-                {errortext}
-              </Text>
+
+            {error.field === "fieldValidation" ? (
+              <Text style={styles.errorTextStyle}>{error.message}</Text>
             ) : null}
-            <TouchableOpacity
-              style={styles.buttonStyle}
-              activeOpacity={0.5}
-              onPress={handleSubmitPress}>
-              <Text style={styles.buttonTextStyle}>LOGIN</Text>
+
+            <View style={styles.leftAlign}>
+              <Checkbox style={styles.checkbox} value={rememberMe} onValueChange={setRememberMe} />
+              <Text style={styles.rememberMe}>{titles.rememberMe}</Text>
+            </View>
+
+            <TouchableOpacity style={styles.buttonStyle} activeOpacity={2} onPress={onLoginPress} disabled={isLoggingIn}>
+              {isLoggingIn ? (
+                <ActivityIndicator color="#080018" />
+              ) : (
+                <Text style={styles.buttonTextStyle}>LOGIN</Text>
+              )}
             </TouchableOpacity>
-            <Text
-              style={styles.registerTextStyle}
-              onPress={() => navigation.navigate('start')}>
-              New Here ? Register
-            </Text>
           </KeyboardAvoidingView>
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </LinearGradient>
     </View>
   );
 };
+
 export default LoginScreen;
 
+
 const styles = StyleSheet.create({
+  gradient: {
+    flex: 1,
+  },
   mainBody: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
     backgroundColor: UDColors.primary,
-    alignContent: 'center',
+    alignContent: "center",
   },
   SectionStyle: {
-    flexDirection: 'row',
+    flexDirection: "row",
     height: 40,
     marginTop: 20,
     marginLeft: 35,
     marginRight: 35,
     margin: 10,
+  
+
+
+
   },
   buttonStyle: {
-    backgroundColor: '#7DE24E',
+    backgroundColor: "#7DE24E",
     borderWidth: 0,
-    color: '#FFFFFF',
-    borderColor: '#7DE24E',
+    color: "#FFFFFF",
+    borderColor: "#7DE24E",
     height: 40,
-    alignItems: 'center',
+    alignItems: "center",
     borderRadius: 30,
     marginLeft: 35,
     marginRight: 35,
@@ -197,30 +272,79 @@ const styles = StyleSheet.create({
     marginBottom: 25,
   },
   buttonTextStyle: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     paddingVertical: 10,
     fontSize: 16,
   },
   inputStyle: {
     flex: 1,
-    color: 'white',
+    color: "white",
     paddingLeft: 15,
     paddingRight: 15,
     borderWidth: 1,
     borderRadius: 30,
-    borderColor: '#dadae8',
+    borderColor: "#dadae8",
   },
   registerTextStyle: {
-    color: '#FFFFFF',
-    textAlign: 'center',
-    fontWeight: 'bold',
+    color: "#FFFFFF",
+    textAlign: "center",
+    fontWeight: "bold",
     fontSize: 14,
-    alignSelf: 'center',
+    alignSelf: "center",
     padding: 10,
   },
   errorTextStyle: {
-    color: 'red',
-    textAlign: 'center',
+    textAlign: "center",
     fontSize: 14,
+  },
+
+  section: {
+    flexDirection: "row",
+    width: "90%",
+    alignItems: "center",
+  },
+
+  leftAlign: {
+    flexDirection: "row",
+    justifyContent: "flex-start",
+    alignItems: "center",
+    width: "50%",
+    marginLeft: 35,
+    marginTop: 10,
+  },
+  rememberMe: {
+    fontFamily: "Montserrat",
+    fontSize: 10,
+    color: "white",
+  },
+  checkbox: {
+    marginRight: 8,
+    color: "#570ecc",
+    backgroundColor: "#FFFFFF",
+  },
+  rightLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "white",
+  },
+  forgetPassword: {
+    fontFamily: "Montserrat",
+    fontSize: 10,
+    color: "#DBA80E",
+  },
+  eyeIcon: {
+    alignItems: "center",
+    justifyContent: "center",
+    position: "absolute",
+    marginLeft: "85%",
+    marginTop: 10,
+  },
+
+  rightAlign: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    width: "50%",
+    
   },
 });
